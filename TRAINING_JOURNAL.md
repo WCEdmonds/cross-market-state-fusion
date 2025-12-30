@@ -75,22 +75,37 @@ This sparsity makes credit assignment harder. The agent takes actions every tick
 
 ---
 
-## Training: Two Phases
+## Training Evolution
 
 ### Phase 1: Shaped Rewards (Updates 1-36)
 
-**Duration**: ~52 minutes | **Trades**: 1,545
+**Duration**: ~52 minutes | **Trades**: 1,545 | **Entropy coef**: 0.05
 
-Started with a reward function that tried to guide learning:
+Started with a reward function that tried to guide learning with micro-bonuses:
 
 ```python
-reward = pnl_delta * 0.1           # Actual PnL (scaled down)
-reward -= 0.001                    # Transaction cost penalty
-reward += 0.002 * momentum_aligned # Bonus for trading with momentum
-reward += 0.001 * size_multiplier  # Bonus for larger positions
+# Reward given every step (not just on close)
+reward = 0.0
+
+# 1. Unrealized PnL delta - scaled DOWN by 0.1
+if has_position:
+    reward += (current_pnl - prev_pnl) * 0.1
+
+# 2. Transaction cost penalty
+if is_trade:
+    reward -= 0.002 * size_multiplier
+
+# 3. Spread cost on entry
+if opening_position:
+    reward -= spread * 0.5
+
+# 4. Micro-bonuses (the problem)
+reward += 0.002 * momentum_aligned  # Bonus for trading with momentum
+reward += 0.001 * size_multiplier   # Bonus for larger positions
+reward -= 0.001 * wrong_momentum    # Penalty for fighting momentum
 ```
 
-**What happened**: Entropy collapsed from 1.09 → 0.36. The policy became nearly deterministic, fixating on a single action pattern.
+**What happened**: Entropy collapsed from 1.09 → 0.36. The policy became nearly deterministic.
 
 | Update | Entropy | PnL | Win Rate |
 |--------|---------|-----|----------|
@@ -99,7 +114,7 @@ reward += 0.001 * size_multiplier  # Bonus for larger positions
 | 20 | 0.40 | $1.37 | 19.4% |
 | 36 | 0.36 | $3.90 | 20.2% |
 
-**What we learned**: The shaping rewards were similar magnitude to actual PnL. With typical PnL deltas of $0.01-0.05, the scaled signal was 0.001-0.005 - same as the bonuses.
+**Why it failed**: The shaping rewards were similar magnitude to actual PnL. With typical PnL deltas of $0.01-0.05, the scaled signal was 0.001-0.005 - same as the bonuses.
 
 The agent learned to game the reward function:
 - Trade with momentum → collect +0.002 bonus
@@ -110,7 +125,7 @@ Buffer win rate showed 90%+ (counting bonus-positive experiences) while actual t
 
 ### Diagnosis: Reward Shaping Backfired
 
-The divergence between buffer win rate (what the agent optimized) and cumulative win rate (what we cared about) revealed the problem:
+The divergence between buffer win rate and cumulative win rate revealed the problem:
 
 - **Buffer win rate**: % of experiences with reward > 0 (includes shaping bonuses)
 - **Cumulative win rate**: % of closed trades that were profitable
@@ -119,29 +134,32 @@ When these diverge, the agent is learning the wrong thing.
 
 ---
 
-### Phase 2: Pure PnL (Updates 37-72)
+### Phase 2: Pure Realized PnL (Updates 37+)
 
-**Duration**: ~52 minutes | **Trades**: 3,330
-
-Switched to probability-based PnL on position close:
+**Changes made**:
+1. Reward ONLY on position close (not every step)
+2. Increased entropy coefficient (0.05 → 0.10)
+3. Simplified action space (7 → 3 actions)
+4. Reset reward normalization stats
 
 ```python
-def reward(position_close):
-    return (exit_prob - entry_prob) * size  # Probability delta, not binary outcome
+# Reward is 0 for all steps EXCEPT position close
+def _compute_step_reward(self, cid, state, action, pos):
+    return self.pending_rewards.pop(cid, 0.0)
+
+# pending_rewards is set when position closes:
+# pnl = (exit_prob - entry_prob) * size
+self.pending_rewards[cid] = pnl
 ```
 
-Also:
-- Doubled entropy coefficient (0.05 → 0.10)
-- Simplified action space (7 → 3 actions)
-- Reset reward normalization stats
+No more micro-bonuses. No more step-by-step unrealized PnL. Just: did you make money when you closed?
 
 **Note on reward normalization**: Raw PnL rewards are z-score normalized before training:
 ```python
 norm_reward = (raw_pnl - running_mean) / (running_std + 1e-8)
 ```
-This helps with gradient stability but means the network sees normalized values, not raw dollars.
 
-**What happened**: Entropy recovered to 1.05 (near maximum for 3 actions). PnL grew steadily.
+**Results**: Entropy recovered to 1.05 (near maximum for 3 actions). PnL grew steadily.
 
 | Update | Entropy | PnL | Win Rate |
 |--------|---------|-----|----------|
