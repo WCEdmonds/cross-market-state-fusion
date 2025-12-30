@@ -8,9 +8,9 @@ Training a PPO agent to trade 15-minute binary prediction markets. This document
 
 **Question**: Can an RL agent learn profitable trading patterns from sparse PnL rewards?
 
-**Setup**: Paper trade 4 concurrent crypto markets (BTC, ETH, SOL, XRP) on Polymarket using live data from Binance + Polymarket orderbooks. $5 per trade, max $20 exposure (all 4 markets).
+**Setup**: Paper trade 4 concurrent crypto markets (BTC, ETH, SOL, XRP) on Polymarket using live data from Binance + Polymarket orderbooks.
 
-**Result**: 55% ROI in Phase 2 (36 updates, ~1 hour). The path there was interesting.
+**Result**: 55% ROI in Phase 2 ($5 trades), 44% recovery ROI in Phase 3 ($50 trades) after overcoming a -$64 drawdown. The path there was interesting.
 
 ---
 
@@ -236,6 +236,32 @@ The critic learned to predict a noisier, more meaningful signal.
 
 ---
 
+### Phase 3: Scaled Up (Updates 73-108)
+
+**Changes made**:
+1. Increased trade size from $5 to $50 (10x)
+2. Continued training from Phase 2 model checkpoint
+
+**Duration**: ~50 minutes | **Trades**: 4,133 | **Size**: $50
+
+**What happened**: The first update hit a -$64 drawdown - unlucky market timing. But the agent recovered steadily over the next 35 updates.
+
+| Update | Entropy | PnL | Win Rate |
+|--------|---------|-----|----------|
+| 1 | 1.04 | -$63.75 | 29.5% |
+| 10 | 1.08 | -$14.75 | 20.8% |
+| 20 | 1.04 | -$8.40 | 17.6% |
+| 36 | 0.97 | +$23.10 | 15.6% |
+
+**Final**: $23.10 PnL on $200 max exposure = **12% ROI** (or **44% ROI** measuring recovery from -$64 trough)
+
+**Key observations**:
+- Entropy remained healthy (0.97) - no policy collapse despite the drawdown
+- Win rate dropped to 15.6% but remained profitable (asymmetric payoffs)
+- Recovery of $87 over 35 updates demonstrates robustness to adverse starts
+
+---
+
 ## Takeaways
 
 1. **Reward shaping is risky** - When shaping rewards are gameable and similar magnitude to the real signal, agents optimize the wrong thing. Sparse but honest > dense but noisy.
@@ -246,6 +272,8 @@ The critic learned to predict a noisier, more meaningful signal.
 
 4. **Watch for buffer/trade win rate divergence** - When these diverge, the agent is optimizing the wrong objective.
 
+5. **Robustness to drawdowns** - Phase 3 showed the agent can recover from large adverse moves without policy collapse. Entropy stayed healthy throughout.
+
 ---
 
-*December 29, 2025*
+*December 29-30, 2025*

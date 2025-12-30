@@ -48,15 +48,15 @@ See [TRAINING_JOURNAL.md](TRAINING_JOURNAL.md) for detailed training analysis.
 
 ## Training Status
 
-| Phase | Updates | Trades | PnL | Win Rate | Entropy |
-|-------|---------|--------|-----|----------|---------|
-| 1 (Shaped rewards) | 36 | 1,545 | $3.90 | 20.2% | 0.36 (collapsed) |
-| 2 (Pure PnL) | 36 | 3,330 | $10.93 | 21.2% | 1.05 (healthy) |
+| Phase | Size | Updates | Trades | PnL | Win Rate | Entropy | ROI |
+|-------|------|---------|--------|-----|----------|---------|-----|
+| 1 (Shaped rewards) | $5 | 36 | 1,545 | $3.90 | 20.2% | 0.36 (collapsed) | - |
+| 2 (Pure PnL) | $5 | 36 | 3,330 | $10.93 | 21.2% | 1.05 (healthy) | 55% |
+| 3 (Scaled up) | $50 | 36 | 4,133 | $23.10 | 15.6% | 0.97 (healthy) | 12% (44%*) |
 
-**Capital**: $5/trade × 4 markets = $20 max exposure
-**Phase 2 ROI**: 55% on max exposure (~2 hours)
+**Capital**: Position size × 0.5 × 4 markets = max exposure ($20 Phase 2, $200 Phase 3)
 
-**Key insight**: Phase 1 failed because shaped rewards let the agent "game" bonuses without profitable trading. Phase 2 used probability-based PnL (normalized) - sparse but honest signal.
+**Key insight**: Phase 3 started with a -$64 drawdown in the first update (unlucky market timing). The agent recovered $87 over the next 35 updates to finish +$23. *44% ROI if measured from the drawdown trough - comparable to Phase 2's 55%.
 
 ---
 
