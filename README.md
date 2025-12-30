@@ -4,7 +4,7 @@ An experiment in training reinforcement learning agents to trade prediction mark
 
 ## What This Is
 
-A PPO (Proximal Policy Optimization) agent that paper trades Polymarket's 15-minute binary crypto markets. The agent observes live data from Binance (spot + futures) and Polymarket's orderbook, then learns to predict short-term price direction.
+A PPO (Proximal Policy Optimization) agent that paper trades Polymarket's 15-minute binary crypto markets. The agent observes live data from Binance futures and Polymarket's orderbook, then learns to predict short-term price direction.
 
 **Current status**: Paper trading only. The agent trains and makes decisions on live market data, but doesn't execute real orders.
 
@@ -71,8 +71,8 @@ See [TRAINING_JOURNAL.md](TRAINING_JOURNAL.md) for detailed training analysis.
 │   └── fade_spike.py         # Spike fading baseline
 └── helpers/
     ├── polymarket_api.py     # Polymarket REST API
-    ├── binance_wss.py        # Binance spot WebSocket
-    ├── binance_futures.py    # Futures data (funding, OI, CVD)
+    ├── binance_wss.py        # Binance WebSocket (spot price reference)
+    ├── binance_futures.py    # Futures data (returns, order flow, CVD)
     └── orderbook_wss.py      # Polymarket CLOB WebSocket
 ```
 
@@ -80,12 +80,14 @@ See [TRAINING_JOURNAL.md](TRAINING_JOURNAL.md) for detailed training analysis.
 
 | Category | Features | Source |
 |----------|----------|--------|
-| Momentum | `returns_1m`, `returns_5m`, `returns_10m` | Binance spot |
+| Momentum | `returns_1m`, `returns_5m`, `returns_10m` | Binance futures |
 | Order Flow | `ob_imbalance_l1`, `ob_imbalance_l5`, `trade_flow`, `cvd_accel` | Binance futures |
 | Microstructure | `spread_pct`, `trade_intensity`, `large_trade_flag` | Polymarket CLOB |
-| Volatility | `vol_5m`, `vol_expansion` | Binance spot |
+| Volatility | `vol_5m`, `vol_expansion` | Polymarket (local), Binance futures |
 | Position | `has_position`, `position_side`, `position_pnl`, `time_remaining` | Internal |
 | Regime | `vol_regime`, `trend_regime` | Derived |
+
+**Note**: Returns and spread are scaled by 100x. CVD acceleration is divided by 1e6. `vol_5m` is computed locally from Polymarket prob history; `vol_expansion` comes from Binance futures.
 
 ## Action Space
 
@@ -158,18 +160,3 @@ source venv/bin/activate
 pip install mlx websockets flask flask-socketio numpy requests
 ```
 
----
-
-## Live Trading Gap
-
-Paper results won't transfer directly to live. Key differences:
-
-**Latency**: Paper assumes instant fills. Real orders take 50-200ms round-trip. Arb signals decay in <100ms.
-
-**Market impact**: Paper trades don't consume liquidity. Real $100+ orders walk the book and move prices.
-
-**Fees**: Paper ignores maker/taker fees. Real trading pays spread + fees on every round-trip.
-
-**Adversarial environment**: Other traders see your orders. Patterns get front-run. Alpha decays as strategy becomes known.
-
-**Realistic expectation**: 20-50% performance degradation from paper to live, depending on size and market conditions.

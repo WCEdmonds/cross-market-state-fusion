@@ -37,7 +37,7 @@ This creates arbitrage opportunities - observe Binance move, bet on Polymarket b
 
 ### Multi-Source Data Fusion
 
-The agent fuses three real-time streams:
+The agent fuses two real-time streams:
 
 ```
 Binance Futures WSS  → Price returns (1m, 5m, 10m), volatility, order flow, CVD, large trades
@@ -186,50 +186,9 @@ You can win 40% of the time and break even. Win 21% of the time but pick your sp
 
 ---
 
-## Technical Details
+## Technical Notes
 
-### PPO Implementation (MLX)
-
-```python
-# GAE advantage estimation
-advantages = compute_gae(rewards, values, dones, gamma=0.99, lambda_=0.95)
-returns = advantages + values
-
-# Normalize advantages
-advantages = (advantages - mean) / (std + 1e-8)
-
-# Clipped policy loss
-ratio = new_prob / old_prob
-surr1 = ratio * advantage
-surr2 = clip(ratio, 1-0.2, 1+0.2) * advantage
-policy_loss = -min(surr1, surr2).mean()
-
-# Value loss + entropy bonus
-value_loss = MSE(values, returns)
-entropy = -(probs * log(probs)).sum(-1).mean()
-loss = policy_loss + 0.5 * value_loss - 0.10 * entropy
-```
-
-### Network Architecture
-
-```
-Actor:  18 → 128 (tanh) → 128 (tanh) → 3 (softmax)
-Critic: 18 → 128 (tanh) → 128 (tanh) → 1
-```
-
-### Hyperparameters
-
-| Parameter | Value |
-|-----------|-------|
-| Buffer size | 512 experiences |
-| Batch size | 64 |
-| Epochs per update | 10 |
-| Actor LR | 1e-4 |
-| Critic LR | 3e-4 |
-| Gamma | 0.99 |
-| GAE lambda | 0.95 |
-| Clip epsilon | 0.2 |
-| Entropy coef | 0.10 |
+See [README.md](README.md) for full architecture and hyperparameters.
 
 ### Value Loss Spikes
 
