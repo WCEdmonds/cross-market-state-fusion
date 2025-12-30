@@ -58,6 +58,16 @@ See [TRAINING_JOURNAL.md](TRAINING_JOURNAL.md) for detailed training analysis.
 
 **Key insight**: Phase 3 started with a -$64 drawdown in the first update (unlucky market timing). The agent recovered $87 over the next 35 updates to finish +$23. *44% ROI if measured from the drawdown trough - comparable to Phase 2's 55%.
 
+### Phase 3 Analysis
+
+![Phase 3 Trading Analysis](phase3_analysis.png)
+
+**Key findings**:
+- **Equity curve** (top-left): Shows -$75 max drawdown early, then steady recovery. The agent didn't panic or collapse policy.
+- **PnL by asset** (top-right): XRP carried (+$44), ETH struggled (-$45). Same policy, different results per asset.
+- **Entry distribution** (bottom-left): Agent favors extreme probabilities (near 0 or 1) - hunting asymmetric payoffs.
+- **Binance vs PnL** (bottom-right): **Correlation: 0.001** - The edge isn't "follow Binance direction". The agent learned *when* to trade, not just *which way* Binance moved. By trade close, Binance information is already priced in. The alpha is in entry timing, not post-entry direction.
+
 ---
 
 ## Architecture
