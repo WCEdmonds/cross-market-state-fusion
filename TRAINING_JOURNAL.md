@@ -10,7 +10,7 @@ Training a PPO agent to trade 15-minute binary prediction markets. This document
 
 **Setup**: Paper trade 4 concurrent crypto markets (BTC, ETH, SOL, XRP) on Polymarket using live data from Binance + Polymarket orderbooks. $5 per trade, max $20 exposure (all 4 markets).
 
-**Result**: 55% ROI on max exposure over 72 PPO updates (~2 hours). But the path there was interesting.
+**Result**: After a failed first attempt, achieved 55% ROI in Phase 2 (36 updates, ~1 hour). The path there was interesting.
 
 ---
 
