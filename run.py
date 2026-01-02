@@ -22,6 +22,18 @@ from typing import Dict, List, Optional
 
 sys.path.insert(0, ".")
 from helpers import get_15m_markets, BinanceStreamer, OrderbookStreamer, Market, FuturesStreamer, get_logger
+
+# Live trading imports (optional)
+try:
+    from helpers.polymarket_executor import PolymarketExecutor, OrderSide
+    from helpers.order_manager import OrderManager
+    LIVE_TRADING_AVAILABLE = True
+except ImportError:
+    LIVE_TRADING_AVAILABLE = False
+    PolymarketExecutor = None
+    OrderManager = None
+    OrderSide = None
+
 from strategies import (
     Strategy, MarketState, Action,
     create_strategy, AVAILABLE_STRATEGIES,
@@ -54,12 +66,23 @@ class Position:
 
 class TradingEngine:
     """
-    Paper trading engine with strategy harness.
+    Trading engine with paper trading and live trading support.
+
+    LIVE TRADING WARNING:
+    When live_mode=True, this will place REAL orders with REAL money.
+    Start with tiny sizes ($5-10) and verify execution before scaling.
     """
 
-    def __init__(self, strategy: Strategy, trade_size: float = 10.0):
+    def __init__(
+        self,
+        strategy: Strategy,
+        trade_size: float = 10.0,
+        live_mode: bool = False,
+        private_key: Optional[str] = None
+    ):
         self.strategy = strategy
         self.trade_size = trade_size
+        self.live_mode = live_mode
 
         # Streamers
         self.price_streamer = BinanceStreamer(["BTC", "ETH", "SOL", "XRP"])
@@ -84,6 +107,39 @@ class TradingEngine:
 
         # Logger (for RL training)
         self.logger = get_logger() if isinstance(strategy, RLStrategy) else None
+
+        # Live trading components
+        self.executor = None
+        self.order_manager = None
+
+        if live_mode:
+            if not LIVE_TRADING_AVAILABLE:
+                raise RuntimeError(
+                    "Live trading not available. Install dependencies:\n"
+                    "  pip install eth-account web3"
+                )
+
+            print("\n" + "!" * 60)
+            print("⚠️  LIVE TRADING MODE ENABLED ⚠️")
+            print("!" * 60)
+            print("This will place REAL orders with REAL money.")
+            print(f"Trade size: ${trade_size} per order")
+            print("!" * 60)
+
+            # Initialize executor
+            # For safety, start in dry_run mode even in live_mode
+            # User must explicitly set dry_run=False in executor code
+            self.executor = PolymarketExecutor(
+                private_key=private_key,
+                dry_run=True  # SAFETY: Default to dry run
+            )
+
+            # Initialize order manager
+            self.order_manager = OrderManager()
+
+            print("✓ Executor initialized (DRY RUN mode)")
+            print("  To enable real orders, modify executor.dry_run = False")
+            print()
 
     def refresh_markets(self):
         """Find active 15-min markets."""
@@ -133,7 +189,73 @@ class TradingEngine:
             self.orderbook_streamer.clear_stale(active_cids)
 
     def execute_action(self, cid: str, action: Action, state: MarketState):
-        """Execute paper trade with flexible sizing."""
+        """
+        Execute trade (paper or live).
+
+        Routes to appropriate execution method based on live_mode.
+        """
+        if self.live_mode:
+            return self._execute_live(cid, action, state)
+        else:
+            return self._execute_paper(cid, action, state)
+
+    def _execute_live(self, cid: str, action: Action, state: MarketState):
+        """Execute REAL order via Polymarket CLOB."""
+        if action == Action.HOLD:
+            return
+
+        pos = self.positions.get(cid)
+        market = self.markets.get(cid)
+        if not pos or not market:
+            return
+
+        price = state.prob
+        trade_amount = self.trade_size * action.size_multiplier
+
+        # Determine token ID and side
+        if action.is_buy:
+            token_id = market.token_up
+            side = OrderSide.BUY
+            order_price = price  # Current UP token price
+        elif action.is_sell:
+            token_id = market.token_down
+            side = OrderSide.SELL  # Actually buying DOWN token
+            order_price = 1 - price  # DOWN token price
+
+        # Create and submit order
+        try:
+            order = self.executor.create_order(
+                token_id=token_id,
+                side=side,
+                price=order_price,
+                size=trade_amount,
+                post_only=False  # Allow taking liquidity for faster fills
+            )
+
+            order_id = self.executor.submit_order(order)
+
+            if order_id:
+                # Register with order manager
+                self.order_manager.register_order(order, cid, market.asset)
+
+                # Update paper position for tracking (will be reconciled with actual fills)
+                if pos.size == 0:  # Opening new position
+                    pos.side = "UP" if action.is_buy else "DOWN"
+                    pos.size = trade_amount
+                    pos.entry_price = order_price
+                    pos.entry_time = datetime.now(timezone.utc)
+                    pos.entry_prob = price
+                    pos.time_remaining_at_entry = state.time_remaining
+
+                    size_label = {0.25: "SM", 0.5: "MD", 1.0: "LG"}.get(action.size_multiplier, "")
+                    print(f"    OPEN {pos.asset} {pos.side} ({size_label}) ${trade_amount:.0f} @ {order_price:.3f}")
+                    emit_trade(f"{'BUY' if action.is_buy else 'SELL'}_{size_label}", pos.asset, pos.size)
+
+        except Exception as e:
+            print(f"    ✗ Order creation failed: {e}")
+
+    def _execute_paper(self, cid: str, action: Action, state: MarketState):
+        """Execute paper trade (original logic)."""
         if action == Action.HOLD:
             return
 
@@ -257,6 +379,24 @@ class TradingEngine:
             await asyncio.sleep(tick_interval)
             tick += 1
             now = datetime.now(timezone.utc)
+
+            # Update order statuses (live trading mode)
+            if self.live_mode and self.order_manager and tick % 2 == 0:  # Every 1 second
+                self.executor.update_all_orders()
+
+                # Update order manager with latest order states
+                for order_id in list(self.executor.active_orders):
+                    if order_id in self.executor.orders:
+                        order = self.executor.orders[order_id]
+                        self.order_manager.update_order(order)
+
+                # Reconcile positions every 10 ticks
+                if tick % 20 == 0:  # Every 10 seconds
+                    for cid, pos in self.positions.items():
+                        if pos.size > 0:
+                            recon = self.order_manager.reconcile_position(cid, pos)
+                            if recon.get("discrepancy"):
+                                print(f"  ⚠ Position reconciliation issue for {cid}")
 
             # Check expired markets
             expired = [cid for cid, m in self.markets.items() if m.end_time <= now]
@@ -576,6 +716,10 @@ async def main():
     parser.add_argument("--dashboard", action="store_true", help="Enable web dashboard")
     parser.add_argument("--port", type=int, default=5050, help="Dashboard port")
 
+    # Live trading arguments
+    parser.add_argument("--live", action="store_true", help="Enable LIVE TRADING mode (REAL MONEY)")
+    parser.add_argument("--private-key", type=str, help="Ethereum private key for signing orders")
+
     args = parser.parse_args()
 
     if not args.strategy:
@@ -585,7 +729,40 @@ async def main():
         print("\nUsage: python run.py <strategy>")
         print("       python run.py rl --train")
         print("       python run.py rl --train --dashboard")
+        print("       python run.py rl --live --private-key <KEY> --size 5  # LIVE TRADING")
         return
+
+    # Live trading warnings
+    if args.live:
+        print("\n" + "!" * 70)
+        print("⚠️  WARNING: LIVE TRADING MODE REQUESTED ⚠️")
+        print("!" * 70)
+        print("This will place REAL orders with REAL money on Polymarket.")
+        print(f"Trade size: ${args.size} per order")
+        print(f"Max exposure: ${args.size * 4} (4 concurrent markets)")
+        print()
+
+        if not args.private_key:
+            print("✗ ERROR: --private-key required for live trading")
+            print("  Usage: python run.py <strategy> --live --private-key <YOUR_KEY>")
+            print()
+            print("  WARNING: Never commit private keys to git!")
+            print("  Consider using environment variables:")
+            print("    export POLYMARKET_KEY='0x...'")
+            print("    python run.py <strategy> --live --private-key $POLYMARKET_KEY")
+            return
+
+        # Confirmation prompt
+        print("Type 'I UNDERSTAND' to proceed: ", end='')
+        import sys
+        confirmation = sys.stdin.readline().strip()
+
+        if confirmation != "I UNDERSTAND":
+            print("\n✗ Live trading cancelled")
+            return
+
+        print("\n✓ Live trading mode confirmed")
+        print()
 
     # Start dashboard in background if requested
     if args.dashboard:
@@ -616,7 +793,12 @@ async def main():
             strategy.eval()
 
     # Run
-    engine = TradingEngine(strategy, trade_size=args.size)
+    engine = TradingEngine(
+        strategy,
+        trade_size=args.size,
+        live_mode=args.live,
+        private_key=args.private_key if args.live else None
+    )
     await engine.run()
 
 
