@@ -17,9 +17,9 @@ Ranked by **Expected Impact × Feasibility**
 
 ---
 
-## 1. 🎯 Real-Time Sentiment Analysis (Political Markets)
+## 1. 🎯 Real-Time Sentiment Analysis (Prediction Markets)
 
-**The Edge**: Trump, election, and political markets move heavily on news/sentiment before orderbooks react.
+**The Edge**: Political, crypto, and macro markets move heavily on news/sentiment before orderbooks react.
 
 ### Why This Wins
 
@@ -56,8 +56,8 @@ class SentimentAnalyzer:
     """
 
     def __init__(self, keywords: list, accounts: list):
-        self.keywords = keywords  # ["trump", "biden", "election"]
-        self.accounts = accounts  # ["@realDonaldTrump", "@POTUS", ...]
+        self.keywords = keywords  # ["bitcoin", "crypto", "fed"]
+        self.accounts = accounts  # ["@100trillionUSD", "@federalreserve", ...]
 
         # Load sentiment model (FinBERT or DistilBERT)
         self.sentiment_model = pipeline(
@@ -189,7 +189,7 @@ class RLSentimentStrategy(RLStrategy):
 - **Extra profit: $100-500/day = $3K-15K/month**
 
 **Best Case** (catching major news):
-- 1-2 major moves per week (e.g., Trump indictment, debate performance)
+- 1-2 major moves per week (e.g., Fed announcements, crypto regulation)
 - $500-2000 per major move
 - **Extra profit: $2K-8K/week = $8K-32K/month**
 
@@ -232,7 +232,7 @@ Political markets exist on:
 ### Example Arbitrage
 
 ```
-Event: Trump wins 2024 election
+Event: Bitcoin > $100K by March 2026
 
 Polymarket: YES @ 0.58
 Kalshi:     YES @ 0.62

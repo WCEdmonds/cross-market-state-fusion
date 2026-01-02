@@ -13,6 +13,7 @@ from .mean_revert import MeanRevertStrategy
 from .momentum import MomentumStrategy
 from .fade_spike import FadeSpikeStrategy
 from .rl_mlx import RLStrategy  # MLX-based PPO with proper autograd
+from .rl_transformer import TransformerRLStrategy  # Transformer-based temporal encoding
 from .gating import GatingStrategy
 
 
@@ -22,6 +23,7 @@ AVAILABLE_STRATEGIES = [
     "momentum",
     "fade_spike",
     "rl",
+    "rl-transformer",
     "gating",
 ]
 
@@ -34,6 +36,7 @@ def create_strategy(name: str, **kwargs) -> Strategy:
         "momentum": MomentumStrategy,
         "fade_spike": FadeSpikeStrategy,
         "rl": RLStrategy,
+        "rl-transformer": TransformerRLStrategy,
     }
 
     if name == "gating":
@@ -62,6 +65,7 @@ __all__ = [
     "MomentumStrategy",
     "FadeSpikeStrategy",
     "RLStrategy",
+    "TransformerRLStrategy",
     "GatingStrategy",
     # Factory
     "create_strategy",
